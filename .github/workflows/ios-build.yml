@@ -1,0 +1,69 @@
+name: Build iOS app
+
+# Write the app on Windows, push, and this compiles it on a Mac in the cloud.
+# The resulting unsigned .ipa is signed and installed by Sideloadly on your PC.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios-build.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: ios
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Compile (unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project CommandCenter.xcodeproj \
+            -scheme CommandCenter \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: Package .ipa
+        run: |
+          set -euo pipefail
+          APP="build/Build/Products/Release-iphoneos/CommandCenter.app"
+          test -d "$APP"
+          rm -rf Payload CommandCenter.ipa
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          zip -qry CommandCenter.ipa Payload
+          ls -lh CommandCenter.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CommandCenter-ipa
+          path: ios/CommandCenter.ipa
+          if-no-files-found: error
+          retention-days: 30
