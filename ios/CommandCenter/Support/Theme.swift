@@ -104,7 +104,7 @@ private struct GlassCard: ViewModifier {
     }
 }
 
-private struct GlassSurface<S: Shape>: ViewModifier {
+private struct GlassSurface<S: InsettableShape>: ViewModifier {
     var shape: S
     var tint: Color
     var strength: Double
@@ -154,7 +154,7 @@ extension View {
     }
 
     /// A glossy glass chip: buttons, pills, list rows.
-    func glassSurface<S: Shape>(
+    func glassSurface<S: InsettableShape>(
         _ shape: S,
         tint: Color = .white,
         strength: Double = 0.10,
