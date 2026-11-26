@@ -112,7 +112,7 @@ struct SettingsView: View {
     /// Fill the computer fields from a scanned QR, then test straight away.
     private func apply(_ code: String) {
         guard let link = PairingLink(code) else {
-            model.testResult = "That QR is not a Command Center pairing code."
+            model.noteTest("That QR is not a Command Center pairing code.")
             return
         }
         model.host = link.host

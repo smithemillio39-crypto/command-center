@@ -35,6 +35,12 @@ final class AppModel: ObservableObject {
     @Published var errorMessage: String?
     @Published private(set) var testResult: String?
 
+    /// Lets a view report its own outcome (a bad scanned code, say) through the
+    /// same line the settings form already shows.
+    func noteTest(_ text: String) {
+        testResult = text
+    }
+
     init() {
         host = defaults.string(forKey: Key.host) ?? ""
         port = defaults.object(forKey: Key.port) as? Int ?? 8765
