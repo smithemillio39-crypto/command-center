@@ -11,6 +11,7 @@
 #   {"t":"click","b":1,"x":..,"y":..} optional coordinates first
 #   {"t":"scroll","d":-3}            wheel steps, positive = up
 #   {"t":"key","vk":13}              one virtual-key tap
+#   {"t":"type","text":"hello"}       type a whole string as Unicode keystrokes
 
 $ErrorActionPreference = 'Stop'
 
@@ -22,6 +23,62 @@ public static class CCInput {
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags, int dx, int dy, int data, UIntPtr extra);
     [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
     [DllImport("user32.dll")] public static extern int GetSystemMetrics(int index);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct INPUT { public uint type; public InputUnion U; }
+
+    [StructLayout(LayoutKind.Explicit)]
+    public struct InputUnion {
+        [FieldOffset(0)] public MOUSEINPUT mi;
+        [FieldOffset(0)] public KEYBDINPUT ki;
+        [FieldOffset(0)] public HARDWAREINPUT hi;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MOUSEINPUT { public int dx; public int dy; public uint mouseData; public uint dwFlags; public uint time; public IntPtr dwExtraInfo; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct KEYBDINPUT { public ushort wVk; public ushort wScan; public uint dwFlags; public uint time; public IntPtr dwExtraInfo; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct HARDWAREINPUT { public uint uMsg; public ushort wParamL; public ushort wParamH; }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern uint SendInput(uint count, INPUT[] inputs, int size);
+
+    const uint INPUT_KEYBOARD = 1;
+    const uint KEYEVENTF_KEYUP = 0x0002;
+    const uint KEYEVENTF_UNICODE = 0x0004;
+
+    // Types text as Unicode keystrokes so any character reaches the focused
+    // control. Newline and tab are sent as real keys; the clipboard is not used.
+    public static uint TypeText(string text) {
+        uint sent = 0;
+        if (text == null) return sent;
+        int size = Marshal.SizeOf(typeof(INPUT));
+        foreach (char ch in text) {
+            if (ch == '\r') continue;
+            ushort vk = 0;
+            ushort scan = ch;
+            uint flags = KEYEVENTF_UNICODE;
+            if (ch == '\n') { vk = 0x0D; scan = 0; flags = 0; }
+            else if (ch == '\t') { vk = 0x09; scan = 0; flags = 0; }
+
+            INPUT down = new INPUT();
+            down.type = INPUT_KEYBOARD;
+            down.U.ki.wVk = vk;
+            down.U.ki.wScan = scan;
+            down.U.ki.dwFlags = flags;
+            INPUT up = new INPUT();
+            up.type = INPUT_KEYBOARD;
+            up.U.ki.wVk = vk;
+            up.U.ki.wScan = scan;
+            up.U.ki.dwFlags = flags | KEYEVENTF_KEYUP;
+            sent += SendInput(1, new INPUT[] { down }, size);
+            sent += SendInput(1, new INPUT[] { up }, size);
+        }
+        return sent;
+    }
 }
 "@
 
@@ -70,6 +127,16 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
             $vk = [byte][int]$message.vk
             [CCInput]::keybd_event($vk, 0, 0, [UIntPtr]::Zero)
             [CCInput]::keybd_event($vk, 0, $KEY_UP, [UIntPtr]::Zero)
+        }
+        'type' {
+            $text = [string]$message.text
+            $sent = [CCInput]::TypeText($text)
+            # Two inputs per character (down + up); anything less means the
+            # keystrokes were refused (for example by an elevated foreground
+            # window) and the phone should hear about it.
+            if ($sent -lt (2 * $text.Length)) {
+                [Console]::Error.WriteLine("typing: only $sent of $($text.Length * 2) keystroke inputs were accepted")
+            }
         }
     }
 }

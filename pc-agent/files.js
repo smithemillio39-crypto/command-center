@@ -158,6 +158,29 @@ function createFileService(roots) {
     return { path: path.relative(root, absolute).replace(/\\/g, '/') };
   }
 
+  function rename(label, requested, name) {
+    const { root, absolute } = resolveInside(label, requested);
+    if (absolute === root) throw new FileError(400, 'cannot rename the shared root itself');
+    let stat;
+    try {
+      stat = fs.statSync(absolute);
+    } catch {
+      throw new FileError(404, 'no such file');
+    }
+    const safe = sanitiseName(name);
+    const target = path.join(path.dirname(absolute), safe);
+    const relative = path.relative(root, absolute).replace(/\\/g, '/');
+    if (target === absolute) return { name: safe, path: relative, directory: stat.isDirectory() };
+    if (!target.startsWith(root + path.sep)) throw new FileError(400, 'path escapes the shared root');
+    if (fs.existsSync(target)) throw new FileError(409, 'something with that name already exists');
+    fs.renameSync(absolute, target);
+    return {
+      name: safe,
+      path: path.relative(root, target).replace(/\\/g, '/'),
+      directory: stat.isDirectory(),
+    };
+  }
+
   function upload(label, requested, name, stream) {
     const { root, absolute: directory } = resolveInside(label, requested);
     const safe = sanitiseName(name);
@@ -217,7 +240,7 @@ function createFileService(roots) {
     return { moved: path.relative(root, destination).replace(/\\/g, '/') };
   }
 
-  return { roots: listRoots, list, open, folder, upload, trash, defaultLabel, MAX_UPLOAD };
+  return { roots: listRoots, list, open, folder, rename, upload, trash, defaultLabel, MAX_UPLOAD };
 }
 
 module.exports = { createFileService, FileError, MAX_UPLOAD, sanitiseName };

@@ -11,6 +11,9 @@ struct PaddleView: View {
 
     @State private var pointerDown = false
     @State private var travelled: CGFloat = 0
+    @State private var typed = ""
+    @State private var showKeyboard = false
+    @FocusState private var typing: Bool
 
     init(model: AppModel) {
         self.model = model
@@ -82,6 +85,19 @@ struct PaddleView: View {
 
                 Spacer()
 
+                Button {
+                    showKeyboard.toggle()
+                    if showKeyboard { typing = true }
+                } label: {
+                    Image(systemName: showKeyboard ? "keyboard.fill" : "keyboard")
+                        .font(.system(size: 12, weight: .semibold))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(Capsule().fill(.black.opacity(showKeyboard ? 0.85 : 0.55)))
+                        .foregroundStyle(.white)
+                }
+                .buttonStyle(.plain)
+
                 ForEach(keyRows, id: \.label) { key in
                     Button {
                         Haptics.tap()
@@ -102,6 +118,12 @@ struct PaddleView: View {
 
             Spacer()
 
+            if showKeyboard {
+                keyboardBar
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 8)
+            }
+
             Text("tap = click · drag = drag · hold = right click")
                 .font(.system(size: 10))
                 .foregroundStyle(.white.opacity(0.5))
@@ -110,6 +132,41 @@ struct PaddleView: View {
                 .background(Capsule().fill(.black.opacity(0.5)))
                 .padding(.bottom, 14)
         }
+    }
+
+    /// Types into whatever window has focus on the PC. The agent sends real
+    /// Unicode keystrokes, so nothing is placed on the clipboard.
+    private var keyboardBar: some View {
+        HStack(spacing: 8) {
+            TextField("Type on \(model.pcName)", text: $typed)
+                .focused($typing)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.send)
+                .onSubmit { sendTyped() }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .foregroundStyle(.white)
+                .background(Capsule().fill(.black.opacity(0.75)))
+                .overlay(Capsule().stroke(Color.ccViolet.opacity(0.45), lineWidth: 1))
+
+            Button {
+                sendTyped()
+            } label: {
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(.system(size: 28))
+                    .foregroundStyle(Color.ccViolet)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func sendTyped() {
+        let text = typed
+        guard !text.isEmpty else { return }
+        typed = ""
+        Haptics.tap()
+        client.send(["t": "type", "text": text])
     }
 
     private struct KeyTap {

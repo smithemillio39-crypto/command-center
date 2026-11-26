@@ -396,7 +396,8 @@ function streamScreen(req, res, url) {
 /* -------------------------------------------------------------- input pipe */
 
 let inputProcess = null;
-const INPUT_TYPES = new Set(['move', 'down', 'up', 'click', 'scroll', 'key']);
+const INPUT_TYPES = new Set(['move', 'down', 'up', 'click', 'scroll', 'key', 'type']);
+const MAX_TYPED_CHARS = 4000;
 
 function inputHelper() {
   if (inputProcess && !inputProcess.killed) return inputProcess;
@@ -427,6 +428,14 @@ function applyInput(body) {
   if (type === 'key') {
     const vk = Number(body.vk);
     if (!Number.isInteger(vk) || vk < 1 || vk > 254) throw new Error('key needs a virtual-key code 1..254');
+  }
+  if (type === 'type') {
+    if (typeof body.text !== 'string' || body.text.length === 0) {
+      throw new Error('type needs a non-empty text string');
+    }
+    if (body.text.length > MAX_TYPED_CHARS) {
+      throw new Error(`type is limited to ${MAX_TYPED_CHARS} characters per call`);
+    }
   }
   if (body.b !== undefined && ![1, 2].includes(Number(body.b))) throw new Error('b must be 1 or 2');
 
@@ -496,6 +505,13 @@ async function handleFiles(req, res, url) {
 
     if (req.method === 'POST' && url.pathname === '/files/folder') {
       send(res, 200, { ok: true, ...service.folder(root, target) });
+      return;
+    }
+
+    if (req.method === 'POST' && url.pathname === '/files/rename') {
+      const result = service.rename(root, target, url.searchParams.get('name'));
+      console.log(`renamed to ${result.path}`);
+      send(res, 200, { ok: true, ...result });
       return;
     }
 
@@ -658,6 +674,16 @@ server.listen(config.port, '0.0.0.0', () => {
   console.log('  First time only: allow Node.js through Windows Firewall, or');
   console.log('  the phone will not be able to reach this port.');
   console.log('');
+
+  // Warm the input helper: PowerShell plus its native bindings take a couple
+  // of seconds to start, and that delay would otherwise land on the first tap.
+  if (IS_WINDOWS) {
+    try {
+      inputHelper();
+    } catch (err) {
+      console.warn('  input helper did not start: ' + err.message);
+    }
+  }
 });
 
 process.on('SIGINT', () => server.close(() => process.exit(0)));

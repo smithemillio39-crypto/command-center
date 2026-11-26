@@ -111,15 +111,52 @@ async function main() {
     check('folder created',
       folder.status === 200 && fs.existsSync(path.join(ROOT, 'archive', '2026')));
 
-    const trashed = await call(`/files/trash?token=${TOKEN}&path=inbox/from-phone.jpg`, { method: 'POST' });
-    check('file moved to trash', trashed.status === 200 && !fs.existsSync(path.join(ROOT, 'inbox', 'from-phone.jpg')),
+    // --- rename ------------------------------------------------------------
+    const renamed = await call(
+      `/files/rename?token=${TOKEN}&path=inbox/from-phone.jpg&name=${encodeURIComponent('phone-photo.jpg')}`,
+      { method: 'POST' });
+    check('file renamed',
+      renamed.status === 200 && fs.existsSync(path.join(ROOT, 'inbox', 'phone-photo.jpg')),
+      JSON.stringify(renamed.body));
+    check('old name is gone', !fs.existsSync(path.join(ROOT, 'inbox', 'from-phone.jpg')));
+
+    fs.writeFileSync(path.join(ROOT, 'inbox', 'keep.bin'), 'other');
+    const clash = await call(
+      `/files/rename?token=${TOKEN}&path=inbox/phone-photo.jpg&name=keep.bin`,
+      { method: 'POST' });
+    check('rename refuses to overwrite', clash.status === 409, JSON.stringify(clash.body));
+    check('both files survive a refused rename',
+      fs.existsSync(path.join(ROOT, 'inbox', 'phone-photo.jpg')) &&
+      fs.existsSync(path.join(ROOT, 'inbox', 'keep.bin')));
+
+    const folderRenamed = await call(
+      `/files/rename?token=${TOKEN}&path=archive/2026&name=2027`, { method: 'POST' });
+    check('folder renamed',
+      folderRenamed.status === 200 && fs.existsSync(path.join(ROOT, 'archive', '2027')),
+      JSON.stringify(folderRenamed.body));
+
+    const rootRename = await call(`/files/rename?token=${TOKEN}&path=&name=nope`, { method: 'POST' });
+    check('renaming the root is refused', rootRename.status === 400, JSON.stringify(rootRename.body));
+
+    const escapingRename = await call(
+      `/files/rename?token=${TOKEN}&path=${encodeURIComponent('../outside')}&name=x.txt`, { method: 'POST' });
+    check('rename cannot climb out of the root', escapingRename.status === 400,
+      JSON.stringify(escapingRename.body));
+
+    const slashName = await call(
+      `/files/rename?token=${TOKEN}&path=inbox/phone-photo.jpg&name=${encodeURIComponent('../evil.txt')}`,
+      { method: 'POST' });
+    check('path-like rename target rejected', slashName.status === 400, JSON.stringify(slashName.body));
+
+    const trashed = await call(`/files/trash?token=${TOKEN}&path=inbox/phone-photo.jpg`, { method: 'POST' });
+    check('file moved to trash', trashed.status === 200 && !fs.existsSync(path.join(ROOT, 'inbox', 'phone-photo.jpg')),
       JSON.stringify(trashed.body));
     check('trash keeps the file',
       trashed.status === 200 && fs.existsSync(path.join(ROOT, trashed.body.moved)));
 
     const after = await call(`/files?token=${TOKEN}&path=inbox`);
     check('trashed file is gone from the listing',
-      after.status === 200 && !after.body.entries.some((entry) => entry.name === 'from-phone.jpg'));
+      after.status === 200 && !after.body.entries.some((entry) => entry.name === 'phone-photo.jpg'));
 
     check('no partial files left behind',
       !fs.readdirSync(path.join(ROOT, 'inbox'), { withFileTypes: true }).some((entry) => entry.name.endsWith('.part')));
