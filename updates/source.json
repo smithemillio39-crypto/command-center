@@ -12,7 +12,17 @@
       "iconURL": "https://raw.githubusercontent.com/smithemillio39-crypto/command-center/main/ios/CommandCenter/Assets.xcassets/AppIcon.appiconset/icon-1024.png",
       "tintColor": "B993FC",
       "category": "utilities",
-      "versions": []
+      "versions": [
+        {
+          "version": "1.0",
+          "buildVersion": "13",
+          "date": "2026-11-26T17:47:41Z",
+          "localizedDescription": "Build 13 of d7cc261.",
+          "downloadURL": "https://github.com/smithemillio39-crypto/command-center/releases/download/build-13/CommandCenter.ipa",
+          "size": 2304302,
+          "minOSVersion": "17.0"
+        }
+      ]
     }
   ]
 }
