@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     @ObservedObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
+    @State private var scanning = false
 
     var body: some View {
         NavigationStack {
@@ -19,6 +20,12 @@ struct SettingsView: View {
                     TextField("Pairing token", text: $model.token)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+
+                    Button {
+                        scanning = true
+                    } label: {
+                        Label("Scan pairing QR", systemImage: "qrcode.viewfinder")
+                    }
 
                     Button("Test connection") {
                         Task { await model.testConnection() }
@@ -75,6 +82,22 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            .sheet(isPresented: $scanning) {
+                NavigationStack {
+                    PairingScanner { code in
+                        scanning = false
+                        apply(code)
+                    }
+                    .ignoresSafeArea()
+                    .navigationTitle("Scan pairing QR")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Cancel") { scanning = false }
+                        }
+                    }
+                }
+            }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -84,5 +107,17 @@ struct SettingsView: View {
             }
         }
         .preferredColorScheme(.dark)
+    }
+
+    /// Fill the computer fields from a scanned QR, then test straight away.
+    private func apply(_ code: String) {
+        guard let link = PairingLink(code) else {
+            model.testResult = "That QR is not a Command Center pairing code."
+            return
+        }
+        model.host = link.host
+        model.port = link.port
+        model.token = link.token
+        Task { await model.testConnection() }
     }
 }
