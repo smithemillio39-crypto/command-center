@@ -551,6 +551,23 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // The remote page paints this behind its glass, so it has to load without
+    // the token the page itself already carries.
+    if (req.method === 'GET' && url.pathname === '/backdrop.jpg') {
+      fs.readFile(path.join(__dirname, 'public', 'backdrop.jpg'), (error, image) => {
+        if (error) {
+          send(res, 404, { ok: false, error: 'backdrop.jpg is missing from public/' });
+          return;
+        }
+        res.writeHead(200, {
+          'Content-Type': 'image/jpeg',
+          'Cache-Control': 'public, max-age=86400',
+        });
+        res.end(image);
+      });
+      return;
+    }
+
     if (req.method === 'GET' && url.pathname === '/') {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(

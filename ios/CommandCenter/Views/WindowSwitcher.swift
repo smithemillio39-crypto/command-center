@@ -109,9 +109,10 @@ struct WindowSwitcherCard: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(.white.opacity(0.05))
+        .glassSurface(
+            RoundedRectangle(cornerRadius: 14, style: .continuous),
+            strength: 0.06,
+            gloss: 0.12
         )
         .contentShape(Rectangle())
     }

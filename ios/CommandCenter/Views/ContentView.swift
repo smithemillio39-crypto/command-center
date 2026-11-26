@@ -74,27 +74,7 @@ struct ContentView: View {
     }
 
     private var background: some View {
-        ZStack {
-            LinearGradient(
-                colors: [
-                    Color(red: 0.06, green: 0.07, blue: 0.11),
-                    Color(red: 0.02, green: 0.02, blue: 0.04)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            Circle()
-                .fill(Color.ccBlue.opacity(0.22))
-                .frame(width: 380)
-                .blur(radius: 90)
-                .offset(x: -110, y: -260)
-            Circle()
-                .fill(Color.ccViolet.opacity(0.18))
-                .frame(width: 320)
-                .blur(radius: 90)
-                .offset(x: 140, y: 220)
-        }
-        .ignoresSafeArea()
+        LyraBackdrop()
     }
 }
 

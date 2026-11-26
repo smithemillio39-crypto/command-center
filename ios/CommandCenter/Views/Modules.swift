@@ -28,7 +28,7 @@ struct HeaderBar: View {
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(width: 38, height: 38)
-                    .background(Circle().fill(.white.opacity(0.12)))
+                    .glassSurface(Circle(), strength: 0.12, gloss: 0.20)
             }
             .buttonStyle(.plain)
         }
@@ -55,7 +55,7 @@ struct StatusPill: View {
         }
         .padding(.horizontal, 11)
         .padding(.vertical, 8)
-        .background(Capsule().fill(.white.opacity(0.10)))
+        .glassSurface(Capsule(), strength: 0.10, gloss: 0.18)
     }
 }
 
@@ -76,7 +76,12 @@ struct ErrorBanner: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.ccAmber.opacity(0.12)))
+        .glassSurface(
+            RoundedRectangle(cornerRadius: 18, style: .continuous),
+            tint: .ccAmber,
+            strength: 0.10,
+            gloss: 0.14
+        )
     }
 }
 
@@ -126,7 +131,11 @@ struct RoundButton: View {
                 .font(.system(size: size * 0.34, weight: .semibold))
                 .foregroundStyle(prominent ? Color.black.opacity(0.85) : Color.white)
                 .frame(width: size, height: size)
-                .background(Circle().fill(prominent ? Color.white : Color.white.opacity(0.14)))
+                .glassSurface(
+                    Circle(),
+                    strength: prominent ? 0.90 : 0.14,
+                    gloss: prominent ? 0.40 : 0.24
+                )
         }
         .buttonStyle(.plain)
     }
@@ -233,7 +242,12 @@ struct CircleAction: View {
                     .font(.system(size: 19, weight: .semibold))
                     .foregroundStyle(isOn ? Color.black.opacity(0.85) : Color.white)
                     .frame(width: 54, height: 54)
-                    .background(Circle().fill(isOn ? tint : Color.white.opacity(0.14)))
+                    .glassSurface(
+                        Circle(),
+                        tint: isOn ? tint : .white,
+                        strength: isOn ? 0.55 : 0.14,
+                        gloss: 0.24
+                    )
             }
             .buttonStyle(.plain)
 
@@ -284,7 +298,7 @@ struct LauncherButton: View {
                     .font(.system(size: 19, weight: .medium))
                     .foregroundStyle(.white)
                     .frame(width: 52, height: 52)
-                    .background(Circle().fill(.white.opacity(0.12)))
+                    .glassSurface(Circle(), strength: 0.12, gloss: 0.22)
                 Text(launcher.title)
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(.white.opacity(0.7))
@@ -326,7 +340,7 @@ struct PaddleCard: View {
                         .font(.system(size: 11, weight: .semibold))
                         .padding(.vertical, 9)
                         .padding(.horizontal, 14)
-                        .background(Capsule().fill(.white.opacity(0.14)))
+                        .glassSurface(Capsule(), strength: 0.14, gloss: 0.20)
                         .foregroundStyle(.white)
                 }
                 .buttonStyle(.plain)
@@ -338,7 +352,7 @@ struct PaddleCard: View {
                         .font(.system(size: 11, weight: .semibold))
                         .padding(.vertical, 9)
                         .padding(.horizontal, 14)
-                        .background(Capsule().fill(Color.ccBlue.opacity(0.32)))
+                        .glassSurface(Capsule(), tint: .ccBlue, strength: 0.28, gloss: 0.22)
                         .foregroundStyle(.white)
                 }
                 .buttonStyle(.plain)
@@ -386,9 +400,11 @@ struct PowerButton: View {
             .foregroundStyle(destructive ? Color.ccPink : Color.white.opacity(0.85))
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
-            .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(.white.opacity(0.08))
+            .glassSurface(
+                RoundedRectangle(cornerRadius: 18, style: .continuous),
+                tint: destructive ? .ccPink : .white,
+                strength: 0.10,
+                gloss: 0.16
             )
         }
         .buttonStyle(.plain)
