@@ -298,11 +298,9 @@ struct LauncherButton: View {
 
 // MARK: - Game streaming
 
-struct StreamCard: View {
+struct PaddleCard: View {
     @ObservedObject var model: AppModel
-    @Environment(\.openURL) private var openURL
-
-    private let moonlightURL = URL(string: "https://apps.apple.com/app/moonlight-game-streaming/id1000551566")!
+    @State private var showStream = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -310,12 +308,12 @@ struct StreamCard: View {
                 Image(systemName: "gamecontroller.fill")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Color.ccAmber)
-                Text("Play PC games on this iPhone")
+                Text("Paddle")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
             }
 
-            Text("Install Sunshine on the PC and Moonlight here. Pair once, then a Bluetooth or USB-C controller drives the game itself - this app stays out of the way.")
+            Text("Your own stream from this PC - no Sunshine, no Moonlight. Tap to click, drag to drag, hold for a right click. Best on the same Wi-Fi.")
                 .font(.system(size: 11))
                 .foregroundStyle(.white.opacity(0.55))
                 .fixedSize(horizontal: false, vertical: true)
@@ -334,9 +332,9 @@ struct StreamCard: View {
                 .buttonStyle(.plain)
 
                 Button {
-                    openURL(moonlightURL)
+                    showStream = true
                 } label: {
-                    Label("Get Moonlight", systemImage: "arrow.up.right")
+                    Label("Open Paddle", systemImage: "play.tv.fill")
                         .font(.system(size: 11, weight: .semibold))
                         .padding(.vertical, 9)
                         .padding(.horizontal, 14)
@@ -349,6 +347,9 @@ struct StreamCard: View {
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .glassCard(tint: .ccAmber, strength: 0.05)
+        .fullScreenCover(isPresented: $showStream) {
+            PaddleView(model: model)
+        }
     }
 }
 

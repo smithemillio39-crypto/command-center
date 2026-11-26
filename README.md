@@ -60,15 +60,33 @@ Volume (draggable dial), mute, media play/pause/skip, lock, sleep, screen off, a
 
 A connected controller drives the app itself: A play/pause, B mute, X previous, Y next, D-pad up/down volume, bumpers skip.
 
-## Playing PC games on the iPhone
+## Paddle - streaming the PC to the iPhone
 
-Not built in, deliberately. Streaming needs hardware video encoding on the PC and a low-latency decoder on the phone - a separate product. The working free pair:
+**Paddle** is the built-in stream: your own link, no Sunshine, no Moonlight, no third-party account.
 
-1. **Sunshine** on the PC (https://github.com/LizardByte/Sunshine).
-2. **Moonlight** on the iPhone (App Store) - pair with Sunshine's PIN.
-3. Xbox / DualSense / Backbone controller over Bluetooth or USB-C; iOS hands it straight to Moonlight.
+1. Start the agent (`pc-agent/start-agent.bat`). It needs **ffmpeg** on the PATH for the screen capture.
+2. In the app, tap **Stream now** on the amber card.
+3. Tap = click, drag = drag, hold = right click. Esc / Tab / Enter / Backspace / Win are on the top bar.
 
-The **Big Picture** button exists for this: put Steam into controller mode here, play in Moonlight.
+How it works: `GET /paddle` (alias `/stream`) runs `ffmpeg -f gdigrab` on the PC and re-frames its MJPEG output as 4-byte big-endian length + one JPEG per frame. The app parses that directly and draws each frame; touches come back as `POST /input`, which a long-lived PowerShell helper turns into real `SetCursorPos` / `mouse_event` / `keybd_event` calls.
+
+Measured on this PC: 15 fps at 960x540, ~54 KB per frame, ~0.8 MB/s, roughly 100 ms behind the desktop. That is comfortable for the desktop, launchers and turn-based games; it is not a competitive-shooter stream - that needs hardware H.264 and a VideoToolbox decoder, which is the next step if you want it.
+
+## Moving files off the phone
+
+**Open files** on the mint card. Tap the upload arrow to send photos/videos from the library to the PC, tap anything to browse folders, swipe left to move a file to the PC's `_trash`.
+
+The agent only ever touches its shared roots. By default that is `%USERPROFILE%\CommandCenter\Files`; override with `AGENT_FILE_ROOTS="label=D:\path;label2=E:\other"`. Requests name a root label plus a relative path, `..` segments are refused, and any resolved path that leaves its root is rejected before a file is opened. Deletes are moves into `<root>/_trash/`, so nothing is destroyed. Uploads stream to a `.part` file and are renamed only when complete, capped at 512 MB.
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /files?root=&path=` | list a folder |
+| `GET /files/raw?root=&path=` | download one file |
+| `POST /files/upload?root=&path=&name=` | raw body upload |
+| `POST /files/folder?root=&path=` | create a folder |
+| `POST /files/trash?root=&path=` | move to `_trash` |
+
+Run `node test-files.js` for the end-to-end check against a throwaway root.
 
 ## Security
 
@@ -82,9 +100,14 @@ Verified:
 
 - The Swift compiles and packages on the macOS runner (Actions run 45723961808, all steps green).
 - Locally: the agent serves `/status` with a valid token, returns 401 without one, and 400 for unknown actions or malformed JSON.
+- Locally: `/stream` delivered 76 frames in 5.1 s (15 fps) at 960x540, 54 KB per frame, 0.83 MB/s, decoded as valid JPEG.
+- Locally: `/input` moved the real Windows pointer from 1300,700 to 31,17 through the Node agent and the PowerShell helper.
+- Locally: `node test-files.js` passed 17/17 - upload/download byte-identical, `..` and absolute-path escapes rejected, unknown root rejected, trash keeps the file, no `.part` left behind.
 
 Not verified:
 
 - Installing on a physical iPhone with Sideloadly, and the trust prompt.
+- The new Swift (`PaddleClient.swift`, `PaddleView.swift`) has not been compiled yet - the macOS runner builds it.
+- Streaming latency over Wi-Fi from a real iPhone, and how it behaves with the phone on a different subnet.
 - The volume percentage is an estimate from what the app set - Windows has no dependency-free way to read the mixer, so it can drift from the real level.
 - Controller mapping on real hardware.

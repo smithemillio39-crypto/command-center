@@ -14,7 +14,8 @@ const os = require('node:os');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { execFile } = require('node:child_process');
+const { execFile, spawn } = require('node:child_process');
+const { createFileService } = require('./files');
 
 const CONFIG_PATH = path.join(__dirname, 'agent.config.json');
 const AGENT_VERSION = '1.0.0';
@@ -92,6 +93,33 @@ function tapKey(code, times = 1) {
     '$w = New-Object -ComObject WScript.Shell; ' +
       `1..${n} | ForEach-Object { $w.SendKeys([char]${code}) }`
   );
+}
+
+/*
+ * LYRA Homecoming is a PySide6 desktop app, so it cannot be compiled for iOS.
+ * The phone can still start it on the PC and drive it through the existing
+ * screen stream; these defaults mirror the desktop shortcut.
+ */
+const LYRA = {
+  root: process.env.LYRA_ROOT || path.join(os.homedir(), 'source', 'LYRA-Homecoming'),
+  data: process.env.LYRA_DATA || 'C:\\LyraHomecoming\\checkpoints\\W005-MAIN-profile',
+  state: process.env.LYRA_STATE || path.join(
+    os.homedir(), 'Documents', 'Codex', '2026-11-22',
+    'files-pasted-by-the-user-codex', 'outputs', 'Aether Five-Brain', 'data'
+  ),
+};
+
+function lyraLaunch() {
+  const python = path.join(LYRA.root, '.venv', 'Scripts', 'pythonw.exe');
+  const main = path.join(LYRA.root, 'main.py');
+  for (const file of [python, main]) {
+    if (!fs.existsSync(file)) throw new Error(`LYRA Homecoming is not installed at ${LYRA.root}`);
+  }
+  return {
+    file: python,
+    args: ['-EB', main, '--live-profile', '--data', LYRA.data, '--aether-state', LYRA.state],
+    cwd: LYRA.root,
+  };
 }
 
 const ALIASES = {
@@ -203,6 +231,16 @@ const ACTIONS = {
     const raw = String(value || '').trim();
     if (!raw) throw new Error('app.launch needs a target');
 
+    if (raw.toLowerCase() === 'lyra') {
+      const spec = lyraLaunch();
+      const args = spec.args.map(psString).join(',');
+      await ps(
+        `Start-Process -FilePath ${psString(spec.file)} -ArgumentList @(${args}) ` +
+        `-WorkingDirectory ${psString(spec.cwd)}`
+      );
+      return 'started LYRA Homecoming';
+    }
+
     const target = ALIASES[raw.toLowerCase()] || raw;
     await ps(`Start-Process ${psString(target)}`);
     return `launched ${target}`;
@@ -253,6 +291,227 @@ function readBody(req) {
   });
 }
 
+/* ------------------------------------------------------- screen streaming */
+
+/*
+ * GET /stream?token=..&width=1280&fps=20&q=7
+ *
+ * ffmpeg captures the desktop and emits MJPEG on its stdout; this process
+ * re-frames it as 4-byte big-endian length + one JPEG per frame, so the iPhone
+ * can parse the stream without a container format or an HLS player. One ffmpeg
+ * per connected client, killed when the client disconnects.
+ */
+
+// q is ffmpeg's -q:v: lower is sharper and heavier. 10 measured ~2.4 MB/s at
+// 1280x720/20 fps, which leaves headroom on Wi-Fi; 7 cost 3.5 MB/s.
+const STREAM_LIMITS = { width: [480, 1920, 1280], fps: [5, 30, 20], q: [2, 20, 10] };
+
+function clampParam(value, key) {
+  const [min, max, fallback] = STREAM_LIMITS[key];
+  // Number(null) and Number('') are 0, which would clamp to the minimum
+  // instead of falling back, so reject absent values explicitly.
+  if (value === null || value === undefined || value === '') return fallback;
+  const n = Math.round(Number(value));
+  return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : fallback;
+}
+
+function streamScreen(req, res, url) {
+  const width = clampParam(url.searchParams.get('width'), 'width');
+  const fps = clampParam(url.searchParams.get('fps'), 'fps');
+  const quality = clampParam(url.searchParams.get('q'), 'q');
+
+  console.log(`paddle: opening ${width}px @ ${fps} fps (q${quality})`);
+
+  const ff = spawn(
+    'ffmpeg',
+    [
+      '-hide_banner', '-loglevel', 'error', '-nostdin',
+      '-f', 'gdigrab', '-framerate', String(fps), '-i', 'desktop',
+      '-vf', `scale=${width}:-2:flags=bilinear`,
+      '-f', 'mjpeg', '-q:v', String(quality),
+      '-flush_packets', '1', 'pipe:1',
+    ],
+    { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] }
+  );
+
+  let opened = false;
+  const begin = () => {
+    if (opened) return;
+    opened = true;
+    res.writeHead(200, {
+      'Content-Type': 'application/octet-stream',
+      'Cache-Control': 'no-store',
+      'X-Stream-Format': 'jpeg-length-prefixed',
+    });
+  };
+
+  const SOI = Buffer.from([0xff, 0xd8]);
+  const EOI = Buffer.from([0xff, 0xd9]);
+  let pending = Buffer.alloc(0);
+
+  ff.stdout.on('data', (chunk) => {
+    pending = Buffer.concat([pending, chunk]);
+    for (;;) {
+      const start = pending.indexOf(SOI);
+      if (start < 0) {
+        pending = Buffer.alloc(0);
+        break;
+      }
+      const end = pending.indexOf(EOI, start + 2);
+      if (end < 0) {
+        pending = pending.subarray(start);
+        break;
+      }
+      const frame = pending.subarray(start, end + 2);
+      pending = pending.subarray(end + 2);
+      begin();
+      const header = Buffer.alloc(4);
+      header.writeUInt32BE(frame.length);
+      res.write(header);
+      res.write(frame);
+    }
+  });
+
+  ff.stderr.on('data', (data) => process.stderr.write('[ffmpeg] ' + data));
+
+  const stop = () => {
+    if (!ff.killed) ff.kill('SIGKILL');
+    try { res.end(); } catch {}
+  };
+
+  ff.on('error', (err) => {
+    console.error('ffmpeg failed to start: ' + err.message);
+    if (!opened) {
+      opened = true;
+      send(res, 503, { ok: false, error: 'ffmpeg is not available on this PC' });
+    } else {
+      stop();
+    }
+  });
+  ff.on('exit', () => { try { res.end(); } catch {} });
+  req.on('close', stop);
+  res.on('close', stop);
+}
+
+/* -------------------------------------------------------------- input pipe */
+
+let inputProcess = null;
+const INPUT_TYPES = new Set(['move', 'down', 'up', 'click', 'scroll', 'key']);
+
+function inputHelper() {
+  if (inputProcess && !inputProcess.killed) return inputProcess;
+  inputProcess = spawn(
+    'powershell.exe',
+    ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'input.ps1')],
+    { windowsHide: true, stdio: ['pipe', 'ignore', 'pipe'] }
+  );
+  inputProcess.stderr.on('data', (data) => process.stderr.write('[input] ' + data));
+  inputProcess.on('exit', () => { inputProcess = null; });
+  inputProcess.on('error', () => { inputProcess = null; });
+  return inputProcess;
+}
+
+function applyInput(body) {
+  const type = String(body.t || '');
+  if (!INPUT_TYPES.has(type)) throw new Error(`unknown input type "${type}"`);
+
+  if (type === 'move' || (type === 'click' && body.x !== undefined)) {
+    const x = Number(body.x);
+    const y = Number(body.y);
+    if (!(x >= 0 && x <= 1 && y >= 0 && y <= 1)) throw new Error('x and y must be between 0 and 1');
+  }
+  if (type === 'scroll') {
+    const d = Number(body.d);
+    if (!Number.isInteger(d) || Math.abs(d) > 2000) throw new Error('scroll needs an integer d');
+  }
+  if (type === 'key') {
+    const vk = Number(body.vk);
+    if (!Number.isInteger(vk) || vk < 1 || vk > 254) throw new Error('key needs a virtual-key code 1..254');
+  }
+  if (body.b !== undefined && ![1, 2].includes(Number(body.b))) throw new Error('b must be 1 or 2');
+
+  const helper = inputHelper();
+  if (!helper.stdin.writable) throw new Error('input helper is not running');
+  helper.stdin.write(JSON.stringify(body) + '\n');
+  return type;
+}
+
+/* ------------------------------------------------------------ file bridge */
+
+let fileServiceCache = null;
+
+function fileService() {
+  if (fileServiceCache) return fileServiceCache;
+
+  const configured = process.env.AGENT_FILE_ROOTS
+    ? process.env.AGENT_FILE_ROOTS.split(';')
+        .filter(Boolean)
+        .map((item) => {
+          const split = item.indexOf('=');
+          if (split < 1) throw new Error('AGENT_FILE_ROOTS entries look like label=D:\\path');
+          return { label: item.slice(0, split).trim(), path: item.slice(split + 1).trim() };
+        })
+    : [{ label: 'share', path: path.join(os.homedir(), 'CommandCenter', 'Files') }];
+
+  fileServiceCache = createFileService(configured);
+  for (const root of fileServiceCache.roots()) {
+    try {
+      fs.mkdirSync(root.path, { recursive: true });
+    } catch (err) {
+      console.error(`could not create the shared folder ${root.path}: ${err.message}`);
+    }
+  }
+  return fileServiceCache;
+}
+
+async function handleFiles(req, res, url) {
+  try {
+    const service = fileService();
+    const root = url.searchParams.get('root');
+    const target = url.searchParams.get('path') || '';
+
+    if (req.method === 'GET' && url.pathname === '/files') {
+      send(res, 200, { ok: true, roots: service.roots(), ...service.list(root, target) });
+      return;
+    }
+
+    if (req.method === 'GET' && url.pathname === '/files/raw') {
+      const file = service.open(root, target);
+      res.writeHead(200, {
+        'Content-Type': file.type,
+        'Content-Length': file.size,
+        'Content-Disposition': `attachment; filename="${encodeURIComponent(file.name)}"`,
+        'Cache-Control': 'no-store',
+      });
+      fs.createReadStream(file.absolute).pipe(res);
+      return;
+    }
+
+    if (req.method === 'POST' && url.pathname === '/files/upload') {
+      const result = await service.upload(root, target, url.searchParams.get('name'), req);
+      console.log(`uploaded ${result.name} (${result.size} bytes)`);
+      send(res, 200, { ok: true, ...result });
+      return;
+    }
+
+    if (req.method === 'POST' && url.pathname === '/files/folder') {
+      send(res, 200, { ok: true, ...service.folder(root, target) });
+      return;
+    }
+
+    if (req.method === 'POST' && url.pathname === '/files/trash') {
+      const result = service.trash(root, target);
+      console.log(`moved to trash: ${result.moved}`);
+      send(res, 200, { ok: true, ...result });
+      return;
+    }
+
+    send(res, 404, { ok: false, error: 'not found' });
+  } catch (err) {
+    send(res, err.status || 500, { ok: false, error: err.message });
+  }
+}
+
 /* ------------------------------------------------------------------ server */
 
 const config = loadConfig();
@@ -288,7 +547,48 @@ const server = http.createServer(async (req, res) => {
         volume: state.volume,
         muted: state.muted,
         commands: Object.keys(ACTIONS),
+        stream: true,
+        input: true,
+        files: true,
+        fileRoots: fileService().roots().map((root) => root.label),
       });
+      return;
+    }
+
+    // Paddle is the stream; /stream stays as the original alias.
+    if (req.method === 'GET' && (url.pathname === '/paddle' || url.pathname === '/stream')) {
+      if (!IS_WINDOWS) {
+        send(res, 501, { ok: false, error: 'screen capture needs a Windows PC' });
+        return;
+      }
+      streamScreen(req, res, url);
+      return;
+    }
+
+    if (url.pathname === '/files' || url.pathname.startsWith('/files/')) {
+      await handleFiles(req, res, url);
+      return;
+    }
+
+    if (req.method === 'POST' && url.pathname === '/input') {
+      const raw = await readBody(req);
+      let body;
+      try {
+        body = raw ? JSON.parse(raw) : {};
+      } catch {
+        send(res, 400, { ok: false, error: 'body must be JSON' });
+        return;
+      }
+      if (!IS_WINDOWS) {
+        send(res, 501, { ok: false, error: 'this agent only drives Windows PCs' });
+        return;
+      }
+      try {
+        const applied = applyInput(body);
+        send(res, 200, { ok: true, applied });
+      } catch (err) {
+        send(res, 400, { ok: false, error: err.message });
+      }
       return;
     }
 

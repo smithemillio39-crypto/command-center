@@ -27,7 +27,8 @@ struct ContentView: View {
 
                     PowerGrid(model: model)
                     LauncherGrid(model: model)
-                    StreamCard(model: model)
+                    PaddleCard(model: model)
+                    FilesCard(model: model)
                     PowerRow { command in pendingPower = command }
                 }
                 .padding(.horizontal, 18)

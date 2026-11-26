@@ -1,0 +1,11 @@
+{
+  "name": "command-center-agent",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Local agent that lets the Command Center iPhone app drive this PC.",
+  "type": "commonjs",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  }
+}

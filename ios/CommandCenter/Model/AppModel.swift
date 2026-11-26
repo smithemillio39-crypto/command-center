@@ -59,6 +59,7 @@ final class AppModel: ObservableObject {
 
     static let defaultLaunchers: [Launcher] = [
         Launcher(title: "Steam", symbol: "gamecontroller.fill", target: "steam-bigpicture"),
+        Launcher(title: "LYRA", symbol: "sparkles", target: "lyra"),
         Launcher(title: "Chrome", symbol: "globe", target: "chrome"),
         Launcher(title: "Discord", symbol: "bubble.left.and.bubble.right.fill", target: "discord"),
         Launcher(title: "Spotify", symbol: "music.note", target: "spotify"),
