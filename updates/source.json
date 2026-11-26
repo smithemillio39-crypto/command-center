@@ -1,0 +1,18 @@
+{
+  "name": "Command Center builds",
+  "identifier": "com.personal.commandcenter.source",
+  "sourceURL": "https://raw.githubusercontent.com/smithemillio39-crypto/command-center/main/updates/source.json",
+  "apps": [
+    {
+      "name": "Command Center",
+      "bundleIdentifier": "com.personal.commandcenter",
+      "developerName": "smith",
+      "subtitle": "Remote for your Windows PC",
+      "localizedDescription": "A Control Center-style remote for your Windows PC: volume, media, power, launchers, the Paddle screen stream and the file bridge, all from the phone.",
+      "iconURL": "https://raw.githubusercontent.com/smithemillio39-crypto/command-center/main/ios/CommandCenter/Assets.xcassets/AppIcon.appiconset/icon-1024.png",
+      "tintColor": "B993FC",
+      "category": "utilities",
+      "versions": []
+    }
+  ]
+}

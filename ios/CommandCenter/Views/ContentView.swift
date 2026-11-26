@@ -3,6 +3,7 @@ import SwiftUI
 @MainActor
 struct ContentView: View {
     @StateObject private var model = AppModel()
+    @StateObject private var updater = Updater()
     @State private var showSettings = false
     @State private var pendingPower: Command?
 
@@ -17,6 +18,8 @@ struct ContentView: View {
                     if let message = model.errorMessage {
                         ErrorBanner(text: message)
                     }
+
+                    UpdateCard(updater: updater)
 
                     WindowSwitcherCard(model: model)
 
@@ -41,13 +44,14 @@ struct ContentView: View {
         }
         .preferredColorScheme(.dark)
         .task { model.start() }
+        .task { await updater.check() }
         .onDisappear { model.stop() }
         .onOpenURL { url in
             // Scanning the pairing QR with the Camera app lands here.
             model.applyPairing(url.absoluteString)
         }
         .sheet(isPresented: $showSettings) {
-            SettingsView(model: model)
+            SettingsView(model: model, updater: updater)
         }
         .confirmationDialog(
             powerTitle,

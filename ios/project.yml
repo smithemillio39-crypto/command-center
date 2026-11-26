@@ -42,6 +42,9 @@ targets:
               - commandcenter
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+        LSApplicationQueriesSchemes:
+          - sidestore
+          - altstore
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.personal.commandcenter

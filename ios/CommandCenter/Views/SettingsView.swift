@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var model: AppModel
+    @ObservedObject var updater: Updater
     @Environment(\.dismiss) private var dismiss
     @State private var scanning = false
 
@@ -75,8 +76,36 @@ struct SettingsView: View {
                     Text("Controller")
                 }
 
+                Section {
+                    LabeledContent("Installed", value: updater.displayVersion)
+
+                    if let latest = updater.latest, updater.isUpdateAvailable {
+                        LabeledContent("Ready to install", value: "Build \(latest.buildVersion)")
+                    }
+
+                    Button("Check for updates") {
+                        Task { await updater.check() }
+                    }
+
+                    if updater.isUpdateAvailable {
+                        Button("Install build \(updater.latest?.buildVersion ?? "")") {
+                            updater.install()
+                        }
+                    }
+
+                    if let status = updater.status {
+                        Text(status)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                } header: {
+                    Text("Updates")
+                } footer: {
+                    Text("Every build the PC publishes lands here. The app checks the feed on launch; install it through SideStore or AltStore when one is present.")
+                }
+
                 Section("About") {
-                    LabeledContent("App", value: "Command Center 1.0")
+                    LabeledContent("App", value: "Command Center \(updater.displayVersion)")
                     Text("Native SwiftUI, compiled on a cloud macOS runner and installed with Sideloadly. No web wrapper.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
