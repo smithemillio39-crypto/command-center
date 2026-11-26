@@ -31,6 +31,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var pcName = "Your PC"
     @Published var volume: Double = 50
     @Published private(set) var muted = false
+    @Published private(set) var windows: [PCWindow] = []
+    @Published private(set) var windowsLoading = false
     @Published private(set) var controllerName: String?
     @Published var errorMessage: String?
     @Published private(set) var testResult: String?
@@ -185,6 +187,36 @@ final class AppModel: ObservableObject {
 
     func launch(target: String) {
         send(.launch, value: target)
+    }
+
+    /// Reloads the PC's open windows. A failure keeps the last list, since the
+    /// status dot already reports whether the agent is reachable.
+    func loadWindows() async {
+        guard client.isConfigured else { return }
+        windowsLoading = true
+        defer { windowsLoading = false }
+        do {
+            windows = try await client.windows()
+            isOnline = true
+        } catch {
+            // Leave the previous list in place.
+        }
+    }
+
+    /// Brings a window on the PC to the front, restoring it if it was minimised.
+    func activate(_ window: PCWindow) {
+        Haptics.tap()
+        Task {
+            do {
+                try await client.activate(hwnd: window.hwnd)
+                Haptics.success()
+                errorMessage = nil
+                try? await Task.sleep(nanoseconds: 400_000_000)
+                await loadWindows()
+            } catch {
+                show(error: error.localizedDescription)
+            }
+        }
     }
 
     // MARK: - Settings

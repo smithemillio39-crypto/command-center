@@ -9,6 +9,22 @@ struct AgentStatus: Decodable {
     let muted: Bool?
 }
 
+/// One of the PC's open windows, as listed by the agent's window helper.
+struct PCWindow: Decodable, Identifiable {
+    let hwnd: Int64
+    let pid: Int?
+    let minimized: Bool?
+    let process: String
+    let title: String
+
+    var id: Int64 { hwnd }
+}
+
+private struct WindowListReply: Decodable {
+    let ok: Bool
+    let windows: [PCWindow]
+}
+
 struct AgentReply: Decodable {
     let ok: Bool
     let result: String?
@@ -72,6 +88,18 @@ struct AgentClient {
             throw AgentError.transport(reply.error ?? "The PC rejected that command.")
         }
         return reply
+    }
+
+    /// The PC's open windows, front-most first.
+    func windows() async throws -> [PCWindow] {
+        let data = try await call(path: "windows", method: "GET", body: nil)
+        return try JSONDecoder().decode(WindowListReply.self, from: data).windows
+    }
+
+    /// Raises one window on the PC, restoring it if it was minimised.
+    func activate(hwnd: Int64) async throws {
+        let body = try JSONSerialization.data(withJSONObject: ["hwnd": hwnd])
+        _ = try await call(path: "windows/activate", method: "POST", body: body)
     }
 
     private func call(path: String, method: String, body: Data?) async throws -> Data {

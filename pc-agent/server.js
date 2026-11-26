@@ -536,6 +536,21 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
 
   try {
+    if (req.method === 'GET' && (url.pathname === '/remote' || url.pathname === '/remote/')) {
+      fs.readFile(path.join(__dirname, 'public', 'remote.html'), (error, page) => {
+        if (error) {
+          send(res, 500, { ok: false, error: 'the remote page is missing from public/remote.html' });
+          return;
+        }
+        res.writeHead(200, {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-store',
+        });
+        res.end(page);
+      });
+      return;
+    }
+
     if (req.method === 'GET' && url.pathname === '/') {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(
@@ -544,6 +559,7 @@ const server = http.createServer(async (req, res) => {
           '<h1 style="font-size:20px">Command Center agent</h1>' +
           `<p>Running on <b>${os.hostname()}</b> - port ${config.port}</p>` +
           '<p style="color:#9aa">Waiting for the iPhone app. Pair with the token in agent.config.json.</p>' +
+          '<p><a style="color:#8b5cf6" href="/remote">Open the phone-style remote</a></p>' +
           '</body>'
       );
       return;
@@ -604,6 +620,60 @@ const server = http.createServer(async (req, res) => {
         send(res, 200, { ok: true, applied });
       } catch (err) {
         send(res, 400, { ok: false, error: err.message });
+      }
+      return;
+    }
+
+    if (req.method === 'GET' && url.pathname === '/windows') {
+      try {
+        const output = await run('powershell.exe', [
+          '-NoProfile',
+          '-NonInteractive',
+          '-ExecutionPolicy',
+          'Bypass',
+          '-File',
+          path.join(__dirname, 'windows.ps1'),
+          '-List',
+        ]);
+        const text = output.replace(/^\uFEFF/, '').trim() || '[]';
+        const windows = JSON.parse(text);
+        send(res, 200, { ok: true, windows: Array.isArray(windows) ? windows : [windows] });
+      } catch (error) {
+        send(res, 500, { ok: false, error: 'could not read the window list: ' + error.message });
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && url.pathname === '/windows/activate') {
+      const raw = await readBody(req);
+      let body;
+      try {
+        body = raw ? JSON.parse(raw) : {};
+      } catch {
+        send(res, 400, { ok: false, error: 'body must be JSON' });
+        return;
+      }
+
+      const hwnd = Math.trunc(Number(body.hwnd));
+      if (!Number.isFinite(hwnd) || hwnd <= 0) {
+        send(res, 400, { ok: false, error: 'hwnd is required' });
+        return;
+      }
+
+      try {
+        await run('powershell.exe', [
+          '-NoProfile',
+          '-NonInteractive',
+          '-ExecutionPolicy',
+          'Bypass',
+          '-File',
+          path.join(__dirname, 'windows.ps1'),
+          '-Activate',
+          String(hwnd),
+        ]);
+        send(res, 200, { ok: true, hwnd });
+      } catch (error) {
+        send(res, 500, { ok: false, error: 'could not switch windows: ' + error.message });
       }
       return;
     }

@@ -18,6 +18,8 @@ struct ContentView: View {
                         ErrorBanner(text: message)
                     }
 
+                    WindowSwitcherCard(model: model)
+
                     HStack(alignment: .top, spacing: 14) {
                         MediaDeck(model: model)
                         VolumeDial(model: model)
