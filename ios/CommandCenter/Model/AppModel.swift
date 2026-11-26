@@ -41,6 +41,20 @@ final class AppModel: ObservableObject {
         testResult = text
     }
 
+    /// Applies a pairing link from an in-app scan or a commandcenter:// open.
+    @discardableResult
+    func applyPairing(_ code: String) -> Bool {
+        guard let link = PairingLink(code) else {
+            noteTest("That QR is not a Command Center pairing code.")
+            return false
+        }
+        host = link.host
+        port = link.port
+        token = link.token
+        Task { await testConnection() }
+        return true
+    }
+
     init() {
         host = defaults.string(forKey: Key.host) ?? ""
         port = defaults.object(forKey: Key.port) as? Int ?? 8765

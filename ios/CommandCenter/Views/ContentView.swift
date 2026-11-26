@@ -40,6 +40,10 @@ struct ContentView: View {
         .preferredColorScheme(.dark)
         .task { model.start() }
         .onDisappear { model.stop() }
+        .onOpenURL { url in
+            // Scanning the pairing QR with the Camera app lands here.
+            model.applyPairing(url.absoluteString)
+        }
         .sheet(isPresented: $showSettings) {
             SettingsView(model: model)
         }

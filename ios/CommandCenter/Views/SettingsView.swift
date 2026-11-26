@@ -86,7 +86,7 @@ struct SettingsView: View {
                 NavigationStack {
                     PairingScanner { code in
                         scanning = false
-                        apply(code)
+                        model.applyPairing(code)
                     }
                     .ignoresSafeArea()
                     .navigationTitle("Scan pairing QR")
@@ -109,15 +109,4 @@ struct SettingsView: View {
         .preferredColorScheme(.dark)
     }
 
-    /// Fill the computer fields from a scanned QR, then test straight away.
-    private func apply(_ code: String) {
-        guard let link = PairingLink(code) else {
-            model.noteTest("That QR is not a Command Center pairing code.")
-            return
-        }
-        model.host = link.host
-        model.port = link.port
-        model.token = link.token
-        Task { await model.testConnection() }
-    }
 }

@@ -36,6 +36,10 @@ targets:
           - UIInterfaceOrientationPortrait
         NSLocalNetworkUsageDescription: Command Center sends commands to the agent running on your own PC, over your home network.
         NSCameraUsageDescription: The camera reads the pairing QR that LYRA shows on your PC, so you do not have to type the address and token.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.personal.commandcenter.pair
+            CFBundleURLSchemes:
+              - commandcenter
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
     settings:
