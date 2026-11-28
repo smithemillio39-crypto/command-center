@@ -51,19 +51,28 @@ func makeImage(at root: URL) throws {
     _ = try filesystem.createFile(in: FAT32Geometry.rootCluster, name: "SHORT.TXT", data: Data("short name\n".utf8))
     _ = try filesystem.createFile(in: FAT32Geometry.rootCluster, name: "delete-me.txt", data: Data("temporary\n".utf8))
     try filesystem.deleteFile(in: FAT32Geometry.rootCluster, name: "delete-me.txt")
-    for entry in try filesystem.list(directory: FAT32Geometry.rootCluster) {
+    try filesystem.flush()
+
+    // Re-open so every check below reads the volume that is really on disk.
+    let onDisk = try FAT32Volume(handle: handle, baseOffset: 0, geometry: geometry)
+    let listing = try onDisk.list(directory: FAT32Geometry.rootCluster)
+    for entry in listing {
         note("entry: " + entry.name + " " + String(entry.size) + " bytes")
     }
-    let readBack = try filesystem.readFile(in: FAT32Geometry.rootCluster, name: longName)
+    guard listing.count == 3 else { throw FixtureError.message("expected 3 files, found " + String(listing.count)) }
+    let readBack = try onDisk.readFile(in: FAT32Geometry.rootCluster, name: longName)
     guard readBack == payload else { throw FixtureError.message("the long-name file did not round-trip") }
-    let readme = try filesystem.readFile(in: FAT32Geometry.rootCluster, name: "readme.txt")
+    let readme = try onDisk.readFile(in: FAT32Geometry.rootCluster, name: "readme.txt")
     guard readme == greeting else { throw FixtureError.message("readme.txt did not round-trip") }
-    let snapshot = try filesystem.integritySnapshot()
+    let short = try onDisk.readFile(in: FAT32Geometry.rootCluster, name: "SHORT.TXT")
+    guard short == Data("short name\n".utf8) else { throw FixtureError.message("SHORT.TXT did not round-trip") }
+    let snapshot = try onDisk.integritySnapshot()
     guard snapshot.fatCopiesMatch else { throw FixtureError.message("the FAT copies differ") }
-    guard snapshot.crossLinkedClusters == 0 else { throw FixtureError.message("cross-linked clusters") }
+    guard snapshot.crossLinkedClusters == 0 else {
+        throw FixtureError.message(String(snapshot.crossLinkedClusters) + " cross-linked clusters")
+    }
     guard snapshot.freeCountMatches else { throw FixtureError.message("the FSInfo free count is wrong") }
     note("free " + String(snapshot.freeClusters) + " of " + String(snapshot.totalClusters) + " clusters")
-    try filesystem.flush()
     note("wrote " + image.path)
 }
 

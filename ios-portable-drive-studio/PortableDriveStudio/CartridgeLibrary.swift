@@ -28,6 +28,11 @@ final class CartridgeLibrary: ObservableObject {
         root = documents.appendingPathComponent("Cartridges", isDirectory: true)
         try? FileManager.default.createDirectory(at: root,
                                                  withIntermediateDirectories: true)
+        // A multi-gigabyte cartridge does not belong in an iCloud backup.
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        var directory = root
+        try? directory.setResourceValues(values)
     }
 
     func refresh() {
@@ -44,10 +49,21 @@ final class CartridgeLibrary: ObservableObject {
             }
     }
 
-    func create(name: String, sizeMB: Int) throws -> CartridgeInfo {
+    /// Creates the enclosure and formats the FAT32 volume inside it, away from
+    /// the main thread. A failure removes the half-made file.
+    func create(name: String, sizeMB: Int) async throws -> CartridgeInfo {
         let capacity = UInt64(max(1, sizeMB)) << 20
         let url = uniqueURL(for: sanitized(name))
-        try AX1VD.create(at: url, capacity: capacity)
+        let label = url.deletingPathExtension().lastPathComponent
+        try await Task.detached(priority: .userInitiated) {
+            try AX1VD.create(at: url, capacity: capacity)
+            do {
+                _ = try AX1VDVolume.format(cartridgeAt: url, label: label, clusterSize: nil)
+            } catch {
+                try? FileManager.default.removeItem(at: url)
+                throw error
+            }
+        }.value
         writeMetadata(for: url, capacity: capacity)
         refresh()
         guard let info = cartridges.first(where: { $0.url == url }) else {
@@ -112,7 +128,7 @@ final class CartridgeLibrary: ObservableObject {
     }
 
     private func sanitized(_ raw: String) -> String {
-        let leaf = raw.replacingOccurrences(of: "\\", with: "/")
+        let leaf = raw.replacingOccurrences(of: "\\\\", with: "/")
             .split(separator: "/").last.map(String.init) ?? raw
         var candidate = leaf.trimmingCharacters(in: .whitespacesAndNewlines)
         if !candidate.lowercased().hasSuffix(".vdrive") {
@@ -136,7 +152,7 @@ final class CartridgeLibrary: ObservableObject {
         let stem = candidate.deletingPathExtension().lastPathComponent
         var suffix = 2
         while FileManager.default.fileExists(atPath: candidate.path) {
-            candidate = root.appendingPathComponent("\(stem)-\(suffix).vdrive")
+            candidate = root.appendingPathComponent(stem + "-" + String(suffix) + ".vdrive")
             suffix += 1
         }
         return candidate
@@ -147,7 +163,8 @@ final class CartridgeLibrary: ObservableObject {
             "format": "aether-cartridge/1",
             "label": url.deletingPathExtension().lastPathComponent,
             "created": ISO8601DateFormatter().string(from: Date()),
-            "logical_capacity": Double(capacity)
+            "logical_capacity": Double(capacity),
+            "filesystem": "FAT32"
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: metadata,
                                                       options: [.prettyPrinted]) else {

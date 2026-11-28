@@ -20,12 +20,33 @@ func byteText(_ value: Int64?) -> String {
 
 func capacityText(_ value: UInt64?) -> String {
     guard let value else { return "-" }
-    return ByteCountFormatter.string(fromByteCount: Int64(value), countStyle: .file)
+    return ByteCountFormatter.string(fromByteCount: Int64(clamping: value), countStyle: .file)
 }
 
 func dateText(_ value: Date?) -> String {
     guard let value else { return "unknown" }
     return value.formatted(date: .abbreviated, time: .shortened)
+}
+
+struct AetherWorkingOverlay: View {
+    let title: String
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.45).ignoresSafeArea()
+            VStack(spacing: 12) {
+                ProgressView()
+                    .tint(AetherStyle.accent)
+                Text(title)
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .tracking(1.2)
+                    .foregroundStyle(AetherStyle.text)
+            }
+            .padding(22)
+            .background(AetherStyle.panel, in: RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(AetherStyle.edge))
+        }
+    }
 }
 
 struct StudioView: View {
@@ -90,21 +111,16 @@ struct StudioView: View {
                     do {
                         selected = try library.importFile(source)
                     } catch {
-                        message = "Import failed: \(error.localizedDescription)"
+                        message = "Import failed: " + error.localizedDescription
                     }
                 case .failure(let error):
-                    message = "Import failed: \(error.localizedDescription)"
+                    message = "Import failed: " + error.localizedDescription
                 }
             }
             .sheet(isPresented: $showCreate) {
-                CreateCartridgeView { name, sizeMB in
-                    do {
-                        selected = try library.create(name: name, sizeMB: sizeMB)
-                        return nil
-                    } catch {
-                        return error.localizedDescription
-                    }
-                }
+                CreateCartridgeView(onCreate: { name, sizeMB in
+                    await createCartridge(name: name, sizeMB: sizeMB)
+                })
             }
             .sheet(item: $selected) { info in
                 CartridgeDetailView(info: info) {
@@ -121,12 +137,13 @@ struct StudioView: View {
                                 isPresented: deleteDialog,
                                 titleVisibility: .visible,
                                 presenting: deleteCandidate) { info in
-                Button("Delete \(info.displayName)", role: .destructive) {
+                Button("Delete " + info.displayName, role: .destructive) {
                     delete(info)
                 }
                 Button("Cancel", role: .cancel) {}
             } message: { info in
-                Text("Permanently remove \(info.url.lastPathComponent) from this iPhone's Studio library? The original file outside the app is not touched. This cannot be undone.")
+                Text("Permanently remove " + info.url.lastPathComponent
+                     + " from this iPhone's Studio library? The original file outside the app is not touched. This cannot be undone.")
             }
             .alert("AETHER Studio", isPresented: alertBinding) {
                 Button("OK", role: .cancel) {}
@@ -134,6 +151,17 @@ struct StudioView: View {
                 Text(message ?? "")
             }
             .onAppear { library.refresh() }
+        }
+    }
+
+    @MainActor
+    private func createCartridge(name: String, sizeMB: Int) async -> String? {
+        do {
+            let info = try await library.create(name: name, sizeMB: sizeMB)
+            selected = info
+            return nil
+        } catch {
+            return error.localizedDescription
         }
     }
 
@@ -152,7 +180,7 @@ struct StudioView: View {
             Text("PORTABLE DRIVE STUDIO")
                 .font(.system(size: 25, weight: .bold, design: .rounded))
                 .foregroundStyle(AetherStyle.text)
-            Text("Local AX1VD cartridges on your iPhone")
+            Text("FAT32 cartridges on your iPhone")
                 .font(.system(size: 13, weight: .medium, design: .rounded))
                 .foregroundStyle(AetherStyle.muted)
         }
@@ -165,18 +193,18 @@ struct StudioView: View {
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                     .tracking(1.6)
                     .foregroundStyle(AetherStyle.muted)
-                Text("\(library.cartridges.count)")
+                Text(String(library.cartridges.count))
                     .font(.system(size: 30, weight: .bold, design: .rounded))
                     .foregroundStyle(AetherStyle.text)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("STORAGE")
+                Text("FILESYSTEM")
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                     .tracking(1.6)
                     .foregroundStyle(AetherStyle.muted)
-                Text("On-device")
+                Text("FAT32")
                     .font(.system(size: 18, weight: .semibold, design: .rounded))
                     .foregroundStyle(AetherStyle.mint)
             }
@@ -221,7 +249,7 @@ struct StudioView: View {
                     Text("No cartridges yet")
                         .font(.system(size: 17, weight: .semibold, design: .rounded))
                         .foregroundStyle(AetherStyle.text)
-                    Text("Create a sparse cartridge here, or import a .vdrive copy from Files.")
+                    Text("Create a FAT32 cartridge here, or import a .vdrive copy from Files.")
                         .font(.system(size: 13, design: .rounded))
                         .foregroundStyle(AetherStyle.muted)
                 }
@@ -277,7 +305,7 @@ struct StudioView: View {
     }
 
     private var footnote: some View {
-        Text("Import copies a cartridge into this app. Deleting removes that copy and its metadata; an original selected in Files is never deleted. This build verifies raw AX1VD enclosures and does not expose an AXFS file browser.")
+        Text("Cartridges are FAT32 volumes inside an AX1VD enclosure. Import copies a cartridge into this app. Deleting removes that copy and its metadata; an original selected in Files is never deleted.")
             .font(.system(size: 11, design: .rounded))
             .foregroundStyle(AetherStyle.muted)
             .fixedSize(horizontal: false, vertical: true)
@@ -288,7 +316,7 @@ struct StudioView: View {
             try library.delete(info)
             deleteCandidate = nil
         } catch {
-            message = "Delete failed: \(error.localizedDescription)"
+            message = "Delete failed: " + error.localizedDescription
         }
     }
 }
@@ -296,10 +324,11 @@ struct StudioView: View {
 struct CreateCartridgeView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var name = "FIELD-CARTRIDGE"
-    @State private var sizeMB = 64
+    @State private var sizeMB = 2048
     @State private var error: String?
+    @State private var working = false
 
-    let onCreate: (String, Int) -> String?
+    let onCreate: @MainActor (String, Int) async -> String?
 
     var body: some View {
         NavigationStack {
@@ -309,16 +338,16 @@ struct CreateCartridgeView: View {
                         .textInputAutocapitalization(.characters)
                         .autocorrectionDisabled()
                 }
-                Section("Logical capacity") {
+                Section("Capacity") {
                     Picker("Capacity", selection: $sizeMB) {
-                        Text("64 MiB").tag(64)
-                        Text("256 MiB").tag(256)
-                        Text("1 GiB").tag(1024)
+                        Text("512 MiB").tag(512)
+                        Text("2 GiB").tag(2048)
+                        Text("4 GiB").tag(4096)
                     }
                     .pickerStyle(.segmented)
                 }
                 Section {
-                    Text("Only the logical size is declared. The file stays sparse until data is written.")
+                    Text("The cartridge is formatted as a FAT32 volume, so a computer can open it. Formatting writes the boot sector, both FAT copies and the root folder; the rest stays sparse on disk until files are added.")
                         .font(.system(size: 12, design: .rounded))
                         .foregroundStyle(AetherStyle.muted)
                 }
@@ -330,15 +359,19 @@ struct CreateCartridgeView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                        .disabled(working)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Create") {
-                        if let failure = onCreate(name, sizeMB) {
-                            error = failure
-                        } else {
-                            dismiss()
-                        }
+                    if working {
+                        ProgressView()
+                    } else {
+                        Button("Create") { start() }
                     }
+                }
+            }
+            .overlay {
+                if working {
+                    AetherWorkingOverlay(title: "FORMATTING FAT32 VOLUME")
                 }
             }
             .alert("Create failed", isPresented: Binding(
@@ -348,6 +381,21 @@ struct CreateCartridgeView: View {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(error ?? "")
+            }
+        }
+    }
+
+    private func start() {
+        working = true
+        let pendingName = name
+        let pendingSize = sizeMB
+        Task { @MainActor in
+            let failure = await onCreate(pendingName, pendingSize)
+            working = false
+            if let failure {
+                error = failure
+            } else {
+                dismiss()
             }
         }
     }
