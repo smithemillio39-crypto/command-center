@@ -1,0 +1,85 @@
+name: Build iPhone Portable Drive Studio
+
+# Windows can write this app but cannot compile it. GitHub's macOS runner
+# produces an unsigned .ipa; Sideloadly signs it with the user's Apple ID.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ios-portable-drive-studio/**"
+      - ".github/workflows/ios-pvd-build.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: ios-portable-drive-studio
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Compile (unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project PortableDriveStudio.xcodeproj \
+            -scheme PortableDriveStudio \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: Package .ipa
+        run: |
+          set -euo pipefail
+          APP="build/Build/Products/Release-iphoneos/PortableDriveStudio.app"
+          test -d "$APP"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ github.run_number }}" "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP/Info.plist"
+          rm -rf Payload AETHER-Portable-Drive-Studio-iPhone.ipa
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          zip -qry AETHER-Portable-Drive-Studio-iPhone.ipa Payload
+          ls -lh AETHER-Portable-Drive-Studio-iPhone.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AETHER-Portable-Drive-Studio-ipa
+          path: ios-portable-drive-studio/AETHER-Portable-Drive-Studio-iPhone.ipa
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish the build as a release
+        working-directory: ${{ github.workspace }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="pvd-ios-${GITHUB_RUN_NUMBER}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" ios-portable-drive-studio/AETHER-Portable-Drive-Studio-iPhone.ipa --clobber
+          else
+            gh release create "$TAG" ios-portable-drive-studio/AETHER-Portable-Drive-Studio-iPhone.ipa \
+              --title "AETHER Portable Drive Studio iPhone build ${GITHUB_RUN_NUMBER}" \
+              --notes "Unsigned iPhone build of ${GITHUB_SHA}. Install with Sideloadly."
+          fi
