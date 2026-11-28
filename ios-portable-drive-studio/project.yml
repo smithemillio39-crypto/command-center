@@ -1,0 +1,66 @@
+name: PortableDriveStudio
+
+options:
+  bundleIdPrefix: com.personal
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: ""
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+
+# A separate app from Command Center. It handles local AX1VD cartridge files
+# and never enumerates any other app or folder on the phone.
+targets:
+  PortableDriveStudio:
+    type: application
+    platform: iOS
+    sources:
+      - path: PortableDriveStudio
+    info:
+      path: PortableDriveStudio/Info.plist
+      properties:
+        CFBundleDisplayName: AETHER Studio
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "1"
+        LSRequiresIPhoneOS: true
+        UIUserInterfaceStyle: Dark
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UILaunchScreen:
+          UIColorName: ""
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIRequiresFullScreen: true
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
+        ITSAppUsesNonExemptEncryption: false
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: AETHER AX1VD Cartridge
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - com.aether.vdrive
+        UTImportedTypeDeclarations:
+          - UTTypeIdentifier: com.aether.vdrive
+            UTTypeDescription: AETHER AX1VD Cartridge
+            UTTypeConformsTo:
+              - public.data
+            UTTypeTagSpecification:
+              public.filename-extension:
+                - vdrive
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.personal.aetherportabledrivestudio
+        PRODUCT_NAME: PortableDriveStudio
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: PortableDriveStudio/Info.plist
+        SUPPORTS_MACCATALYST: NO
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+        SWIFT_EMIT_LOC_STRINGS: YES
+        ENABLE_PREVIEWS: YES
