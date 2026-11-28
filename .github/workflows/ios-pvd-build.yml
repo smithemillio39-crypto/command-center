@@ -105,6 +105,8 @@ jobs:
           mkdir -p build-fixture
           swiftc -O \
             PortableDriveStudio/FAT32.swift \
+            PortableDriveStudio/AX1VD.swift \
+            PortableDriveStudio/Volume.swift \
             tests/FAT32Fixture/main.swift \
             -o build-fixture/fat32fixture
 
@@ -137,3 +139,13 @@ jobs:
           set -euo pipefail
           ./build-fixture/fat32fixture cat build-fixture/work/plain.img HOST.TXT > build-fixture/work/read-back.txt
           diff build-fixture/work/host.txt build-fixture/work/read-back.txt
+
+      - name: Build an AX1VD cartridge
+        run: ./build-fixture/fat32fixture cartridge build-fixture/work
+
+      - name: Check the cartridge volume with fsck.fat
+        run: |
+          set -euo pipefail
+          tail -c +69633 build-fixture/work/cartridge.vdrive > build-fixture/work/cartridge.img
+          fsck.fat -n -v build-fixture/work/cartridge.img
+          mdir -i build-fixture/work/cartridge.img ::/

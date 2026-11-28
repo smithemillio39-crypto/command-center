@@ -67,6 +67,32 @@ func makeImage(at root: URL) throws {
     note("wrote " + image.path)
 }
 
+func makeCartridge(at root: URL) throws {
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let url = root.appendingPathComponent("cartridge.vdrive")
+    try? FileManager.default.removeItem(at: url)
+    let capacity: UInt64 = 320 * 1024 * 1024
+    try AX1VD.create(at: url, capacity: capacity)
+    let descriptor = try AX1VDVolume.format(cartridgeAt: url, label: "AETHER CART", clusterSize: nil)
+    note("cartridge geometry: " + String(descriptor.geometry.totalClusters) + " clusters")
+    let body = Data("written through AX1VDVolume\n".utf8)
+    let volume = try AX1VDVolume.mount(at: url)
+    try volume.writeFile("cartridge note.txt", in: [], data: body)
+    let readBack = try volume.readFile("cartridge note.txt", in: [])
+    guard readBack == body else { throw FixtureError.message("the cartridge file did not round-trip") }
+    note("cartridge free bytes: " + String(volume.freeBytes))
+    try volume.eject()
+    let verify = try AX1VD.verify(at: url)
+    note(verify.summary)
+    guard verify.journalState == .clean else { throw FixtureError.message("the journal was not clean after eject") }
+    guard verify.bootSectorPresent else { throw FixtureError.message("no FAT32 boot sector in the data region") }
+    guard verify.sizeComplete else { throw FixtureError.message("the cartridge is shorter than its declared capacity") }
+    let integrity = try AX1VDVolume.integrityCheck(at: url)
+    guard integrity.isHealthy else { throw FixtureError.message(integrity.summary) }
+    note(integrity.summary)
+    note("wrote " + url.path)
+}
+
 func openImage(_ path: String) throws -> (handle: FileHandle, geometry: FAT32Geometry) {
     let url = URL(fileURLWithPath: path)
     let handle = try FileHandle(forReadingFrom: url)
@@ -95,7 +121,7 @@ func cat(imagePath: String, name: String) throws {
 
 let arguments = CommandLine.arguments
 if arguments.count < 3 {
-    stop("usage: fat32fixture build|catalogue|cat <path> [name]")
+    stop("usage: fat32fixture build|cartridge|catalogue|cat <path> [name]")
 }
 let command = arguments[1]
 let target = arguments[2]
@@ -104,6 +130,8 @@ do {
     switch command {
     case "build":
         try makeImage(at: URL(fileURLWithPath: target, isDirectory: true))
+    case "cartridge":
+        try makeCartridge(at: URL(fileURLWithPath: target, isDirectory: true))
     case "catalogue":
         try catalogue(imagePath: target)
     case "cat":
