@@ -2,6 +2,8 @@ name: Build iPhone Portable Drive Studio
 
 # Windows can write this app but cannot compile it. GitHub's macOS runner
 # produces an unsigned .ipa; Sideloadly signs it with the user's Apple ID.
+# The filesystem job writes a real FAT32 image and checks it with dosfstools
+# and mtools, so a green run means the volume is valid, not only compiled.
 
 on:
   push:
@@ -83,3 +85,55 @@ jobs:
               --title "AETHER Portable Drive Studio iPhone build ${GITHUB_RUN_NUMBER}" \
               --notes "Unsigned iPhone build of ${GITHUB_SHA}. Install with Sideloadly."
           fi
+
+  filesystem:
+    runs-on: macos-15
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: ios-portable-drive-studio
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install FAT tools
+        run: brew install dosfstools mtools
+
+      - name: Compile the FAT32 fixture
+        run: |
+          set -euo pipefail
+          mkdir -p build-fixture
+          swiftc -O \
+            PortableDriveStudio/FAT32.swift \
+            tests/FAT32Fixture/main.swift \
+            -o build-fixture/fat32fixture
+
+      - name: Write a FAT32 image
+        run: ./build-fixture/fat32fixture build build-fixture/work
+
+      - name: Check the image with fsck.fat
+        run: |
+          set -euo pipefail
+          fsck.fat -n -v build-fixture/work/plain.img
+
+      - name: Write and read with mtools
+        run: |
+          set -euo pipefail
+          IMG=build-fixture/work/plain.img
+          printf 'written by mtools\n' > build-fixture/work/host.txt
+          mdir -i "$IMG" ::/
+          mcopy -i "$IMG" build-fixture/work/host.txt ::/HOST.TXT
+          mtype -i "$IMG" ::/HOST.TXT > build-fixture/work/roundtrip.txt
+          diff build-fixture/work/host.txt build-fixture/work/roundtrip.txt
+          mdir -i "$IMG" ::/
+
+      - name: Check the image again after mtools wrote to it
+        run: |
+          set -euo pipefail
+          fsck.fat -n -v build-fixture/work/plain.img
+
+      - name: Read the mtools file with our reader
+        run: |
+          set -euo pipefail
+          ./build-fixture/fat32fixture cat build-fixture/work/plain.img HOST.TXT > build-fixture/work/read-back.txt
+          diff build-fixture/work/host.txt build-fixture/work/read-back.txt
